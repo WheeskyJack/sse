@@ -20,7 +20,7 @@ type Stream struct {
 	msgChanSize         int
 	concurrencyChanSize int
 
-	timeout time.Duration
+	timeoutToClient time.Duration
 
 	Logger *log.Logger
 }
@@ -34,15 +34,15 @@ func NewStream(opts ...Option) *Stream {
 		msgChanSize:         10, // default channel size
 		concurrencyChanSize: 10, // default channel size
 		Logger:              log.Default(),
-		timeout:             10 * time.Second,
+		timeoutToClient:     10 * time.Second,
 	}
 
 	for _, o := range opts {
 		o(s)
 	}
 
-	if s.timeout <= 0 {
-		s.timeout = 10 * time.Second
+	if s.timeoutToClient <= 0 {
+		s.timeoutToClient = 10 * time.Second
 	}
 	if s.concurrencyChanSize <= 0 {
 		s.concurrencyChanSize = 10
@@ -86,10 +86,10 @@ func WithConcurrencySize(size int) Option {
 	}
 }
 
-// WithTimeout sets timeout for clients.
-func WithTimeout(timeout time.Duration) Option {
+// WithTimeoutToClient sets timeout for clients.
+func WithTimeoutToClient(timeout time.Duration) Option {
 	return func(s *Stream) {
-		s.timeout = timeout
+		s.timeoutToClient = timeout
 	}
 }
 
@@ -197,7 +197,7 @@ func (s *Stream) run() {
 }
 
 func sendMsg(s *Stream, c chan message, m message) {
-	newtimer := time.NewTimer(s.timeout)
+	newtimer := time.NewTimer(s.timeoutToClient)
 	defer func() {
 		if !newtimer.Stop() {
 			<-newtimer.C

@@ -1,10 +1,12 @@
 # HTTP Server-Sent Events
 
+forked from [lorciv/sse](https://github.com/lorciv/sse)
+
 Sse is a Go package that implents HTTP server-sent events (SSE) handling.
-The standard for HTTP SSE can be found here: [https://html.spec.whatwg.org/multipage/server-sent-events.html#server-sent-events]().
+The standard for HTTP SSE can be found [here](https://html.spec.whatwg.org/multipage/server-sent-events.html#server-sent-events).
 
 ```sh
-$ go get github.com/lorciv/sse
+$ go get github.com/WheeskyJack/sse
 ```
 
 ## Usage
@@ -23,14 +25,14 @@ To send events on a stream, use the `Send` method.
 Send accepts the data to be sent as a slice of bytes.
 
 ```go
-s.Send([]byte("42"))
+s.Send(context.Background(), []byte("42"))
 ```
 
 If you wish to specify the event type, use `SendEvent` instead.
 (A call to Send is equivalent to SendEvent with event type == "message".)
 
 ```go
-s.SendEvent("apples", []byte("42"))
+s.SendEvent(context.Background(), "apples", []byte("42"))
 ```
 
 Arbitrarily complex data can be sent to the client as long as it is encoded as a byte slice.
@@ -54,6 +56,9 @@ stream.onmessage = function(m) {
 
 A stream can optionally be assigned a logger.
 
-```go
-s.Logger = log.Default()
-```
+Buffering the input requests channel with desired size is possible.
+
+send to client can be done concurrently and concurrency can be user controlled.
+
+timeout for sending event to client can be controlled.
+
