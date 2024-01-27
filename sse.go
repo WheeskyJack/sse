@@ -5,14 +5,18 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 )
 
 // Stream is an HTTP event stream.
 type Stream struct {
-	requests    chan request
-	channels    []chan message
-	reqChanSize int
-	msgChanSize int
+	requests        chan request
+	channels        []chan message
+	concurrencyChan chan struct{}
+
+	reqChanSize         int
+	msgChanSize         int
+	concurrencyChanSize int
 
 	Logger *log.Logger
 }
@@ -22,15 +26,21 @@ type Stream struct {
 // It also exposes Send and SendEvent methods, which can be used to notify all active listeners.
 func NewStream(opts ...Option) *Stream {
 	s := &Stream{
-		reqChanSize: 10, // default channel size
-		msgChanSize: 10, // default channel size
+		reqChanSize:         10, // default channel size
+		msgChanSize:         10, // default channel size
+		concurrencyChanSize: 10, // default channel size
+		Logger:              log.Default(),
 	}
 
 	for _, o := range opts {
 		o(s)
 	}
 
+	if s.concurrencyChanSize <= 0 {
+		s.concurrencyChanSize = 10
+	}
 	s.requests = make(chan request, s.reqChanSize)
+	s.concurrencyChan = make(chan struct{}, s.concurrencyChanSize)
 
 	go s.run()
 	return s
@@ -50,6 +60,20 @@ func WithReqChanSize(size int) Option {
 func WithMsgChanSize(size int) Option {
 	return func(s *Stream) {
 		s.msgChanSize = size
+	}
+}
+
+// WithLogger sets the logger.
+func WithLogger(l *log.Logger) Option {
+	return func(s *Stream) {
+		s.Logger = l
+	}
+}
+
+// WithConcurrencySize sets size of concurrency channel.
+func WithConcurrencySize(size int) Option {
+	return func(s *Stream) {
+		s.concurrencyChanSize = size
 	}
 }
 
@@ -128,17 +152,35 @@ func (s *Stream) run() {
 			}
 			s.logf("del listener: total %d", len(s.channels))
 		case "notify":
+			wg := new(sync.WaitGroup)
+
 			for _, c := range s.channels {
-				select {
-				case c <- req.m:
-					// message sent
-				default:
-					s.logf("message dropped")
-				}
+				wg.Add(1)
+				s.concurrencyChan <- struct{}{} // controls the number of go routines launched
+				go func(cc chan message, mm message) {
+					defer func() {
+						<-s.concurrencyChan
+						wg.Done()
+					}()
+
+					sendMsg(s, cc, mm)
+				}(c, req.m)
+
 			}
+
+			wg.Wait() // wait till all go routines finish
 		default:
 			panic("unexpected request type")
 		}
+	}
+}
+
+func sendMsg(s *Stream, c chan message, m message) {
+	select {
+	case c <- m:
+		// message sent
+	default:
+		s.logf("message dropped")
 	}
 }
 
