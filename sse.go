@@ -9,8 +9,10 @@ import (
 
 // Stream is an HTTP event stream.
 type Stream struct {
-	requests chan request
-	channels []chan message
+	requests    chan request
+	channels    []chan message
+	reqChanSize int
+	msgChanSize int
 
 	Logger *log.Logger
 }
@@ -18,10 +20,37 @@ type Stream struct {
 // NewStream returns a new event stream that is ready to use.
 // A Stream implements the http.Handler interface, through which clients can subscribe to new events.
 // It also exposes Send and SendEvent methods, which can be used to notify all active listeners.
-func NewStream() *Stream {
-	s := Stream{requests: make(chan request)}
+func NewStream(opts ...Option) *Stream {
+	s := &Stream{
+		reqChanSize: 10, // default channel size
+		msgChanSize: 10, // default channel size
+	}
+
+	for _, o := range opts {
+		o(s)
+	}
+
+	s.requests = make(chan request, s.reqChanSize)
+
 	go s.run()
-	return &s
+	return s
+}
+
+// Option configures options for Stream
+type Option func(s *Stream)
+
+// WithReqChanSize sets size of requests channel.
+func WithReqChanSize(size int) Option {
+	return func(s *Stream) {
+		s.reqChanSize = size
+	}
+}
+
+// WithReqChanSize sets size of message channel.
+func WithMsgChanSize(size int) Option {
+	return func(s *Stream) {
+		s.msgChanSize = size
+	}
 }
 
 // Send sends a new event of type "message" to all listening clients.
@@ -114,7 +143,7 @@ func (s *Stream) run() {
 }
 
 func (s *Stream) subscribe() chan message {
-	c := make(chan message)
+	c := make(chan message, s.msgChanSize)
 	s.requests <- request{cmd: "subscribe", c: c}
 	return c
 }
