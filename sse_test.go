@@ -81,7 +81,7 @@ func TestStream_ServeHTTP(t *testing.T) {
 
 	// create events in server
 	for ind, tc := range testEvents {
-		stream.SendEvent(tc.Event, tc.Data)
+		stream.SendEvent(context.Background(), tc.Event, tc.Data)
 
 		// wait for all clients to recv
 		for j := 0; j < 100; j++ {

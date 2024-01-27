@@ -2,6 +2,7 @@
 package sse
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -94,13 +95,18 @@ func WithTimeout(timeout time.Duration) Option {
 
 // Send sends a new event of type "message" to all listening clients.
 // It is equivalent to a call to SendEvent with event == "message".
-func (s *Stream) Send(data []byte) {
-	s.SendEvent("message", data)
+func (s *Stream) Send(ctx context.Context, data []byte) error {
+	return s.SendEvent(ctx, "message", data)
 }
 
 // SendEvent sends a new event of given type to all listening clients.
-func (s *Stream) SendEvent(event string, data []byte) {
-	s.requests <- request{cmd: "notify", m: message{event: event, data: data}}
+func (s *Stream) SendEvent(ctx context.Context, event string, data []byte) error {
+	select {
+	case s.requests <- request{cmd: "notify", m: message{event: event, data: data}}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (s *Stream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
