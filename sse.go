@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 )
 
 // Stream is an HTTP event stream.
@@ -17,6 +18,8 @@ type Stream struct {
 	reqChanSize         int
 	msgChanSize         int
 	concurrencyChanSize int
+
+	timeout time.Duration
 
 	Logger *log.Logger
 }
@@ -30,15 +33,20 @@ func NewStream(opts ...Option) *Stream {
 		msgChanSize:         10, // default channel size
 		concurrencyChanSize: 10, // default channel size
 		Logger:              log.Default(),
+		timeout:             10 * time.Second,
 	}
 
 	for _, o := range opts {
 		o(s)
 	}
 
+	if s.timeout <= 0 {
+		s.timeout = 10 * time.Second
+	}
 	if s.concurrencyChanSize <= 0 {
 		s.concurrencyChanSize = 10
 	}
+
 	s.requests = make(chan request, s.reqChanSize)
 	s.concurrencyChan = make(chan struct{}, s.concurrencyChanSize)
 
@@ -74,6 +82,13 @@ func WithLogger(l *log.Logger) Option {
 func WithConcurrencySize(size int) Option {
 	return func(s *Stream) {
 		s.concurrencyChanSize = size
+	}
+}
+
+// WithTimeout sets timeout for clients.
+func WithTimeout(timeout time.Duration) Option {
+	return func(s *Stream) {
+		s.timeout = timeout
 	}
 }
 
@@ -176,10 +191,17 @@ func (s *Stream) run() {
 }
 
 func sendMsg(s *Stream, c chan message, m message) {
+	newtimer := time.NewTimer(s.timeout)
+	defer func() {
+		if !newtimer.Stop() {
+			<-newtimer.C
+		}
+	}()
+
 	select {
 	case c <- m:
 		// message sent
-	default:
+	case <-newtimer.C:
 		s.logf("message dropped")
 	}
 }
